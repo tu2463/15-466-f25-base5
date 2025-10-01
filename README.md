@@ -1,18 +1,36 @@
-# (TODO: your game's title)
+# Misson Code: Duo
 
-Author: (TODO: your name)
+## Author
 
-Design: (TODO: In two sentences or fewer, describe what is new and interesting about your game.)
+Cheyu Tu
 
-Networking: (TODO: How does your game implement client/server multiplayer? What messages are transmitted? Where in the code?)
+## Design
 
-Screen Shot:
+> What is new and interesting about this game?
+
+This is a two-player game. Players are secret agents investigating a restaurant to uncover hidden clues crucial to their next mission. One player will provide encoded instruction, the other deciphers it to locate the hidden items.
+
+## Networking
+
+> How is the client/server multiplayer in this game? What messages are transmitted? Where in the code?
+
+## Screen Shot:
 
 ![Screen Shot](screenshot.png)
 
-How To Play:
+## How To Play:
 
 (TODO: describe the controls and (if needed) goals/strategy.)
+
+Start a local server:
+```
+./dist/server 30000
+```
+
+Connect to the server as a new player:
+```
+./dist/client localhost 30000
+```
 
 Sources: (TODO: list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.)
 
