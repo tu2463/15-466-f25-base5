@@ -8,27 +8,34 @@
 #include <vector>
 #include <deque>
 
-struct PlayMode : Mode {
+struct PlayMode : Mode
+{
 	PlayMode(Client &client);
 	virtual ~PlayMode();
 
-	//functions called by main loop:
+	// functions called by main loop:
 	virtual bool handle_event(SDL_Event const &, glm::uvec2 const &window_size) override;
 	virtual void update(float elapsed) override;
 	virtual void draw(glm::uvec2 const &drawable_size) override;
 
 	//----- game state -----
 
-	//input tracking for local player:
+	// input tracking for local player:
 	Player::Controls controls;
 
-	//latest game state (from server):
+	// latest game state (from server):
 	Game game;
 
-	//last message from server:
+	// last message from server:
 	std::string server_message;
 
-	//connection to server:
+	// connection to server:
 	Client &client;
 
+	// --- Lobby phase ---
+	// UI state is driven by server phase, but we keep local selection to send as login:
+	int start_selected = 0; // 0 = Communicator, 1 = Operative
+	bool start_pressed_login = false;
+
+	void send_login();
 };

@@ -16,6 +16,7 @@ enum class Message : uint8_t {
 	C2S_Controls = 1, //Greg!
 	S2C_State = 's',
 	//...
+	C2S_Login = 'L',
 };
 
 //used to represent a control input:
@@ -23,6 +24,8 @@ struct Button {
 	uint8_t downs = 0; //times the button has been pressed
 	bool pressed = false; //is the button pressed now
 };
+
+enum class Role : uint8_t { Unknown = 0, Communicator = 1, Operative = 2 };
 
 //state of one player in the game:
 struct Player {
@@ -44,6 +47,8 @@ struct Player {
 
 	glm::vec3 color = glm::vec3(1.0f, 1.0f, 1.0f);
 	std::string name = "";
+
+	Role role = Role::Unknown;
 };
 
 struct Game {
@@ -71,7 +76,10 @@ struct Game {
 	inline static constexpr float PlayerRadius = 0.06f;
 	inline static constexpr float PlayerSpeed = 2.0f;
 	inline static constexpr float PlayerAccelHalflife = 0.25f;
-	
+
+	// --- State ---
+	enum class Phase : uint8_t { Lobby = 0, Playing = 1 };
+    Phase phase = Phase::Lobby;
 
 	//---- communication helpers ----
 
@@ -84,4 +92,7 @@ struct Game {
 	//send game state.
 	//  Will move "connection_player" to the front of the front of the sent list.
 	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
+
+	static void send_login_message(Connection *c, Role role);
+    static bool recv_login_message(Connection *c, Role *out_role);
 };
