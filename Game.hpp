@@ -78,7 +78,7 @@ struct Game {
 	inline static constexpr float PlayerAccelHalflife = 0.25f;
 
 	// --- State ---
-	enum class Phase : uint8_t { Lobby = 0, Playing = 1 };
+	enum class Phase : uint8_t { Lobby = 0, Communication = 1 };
     Phase phase = Phase::Lobby;
 
 	//---- communication helpers ----

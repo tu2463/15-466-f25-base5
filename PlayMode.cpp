@@ -1,4 +1,8 @@
 #include "PlayMode.hpp"
+#include "Scene.hpp"
+#include "Mesh.hpp"
+#include "Load.hpp"
+#include "LitColorTextureProgram.hpp"
 
 #include "DrawLines.hpp"
 #include "gl_errors.hpp"
@@ -12,8 +16,35 @@
 #include <random>
 #include <array>
 
-PlayMode::PlayMode(Client &client_) : client(client_)
+// Global (file-scope) resources for the room scene:
+GLuint room_meshes_for_lit_color_texture_program = 0;
+
+Load<MeshBuffer> room_meshes(LoadTagDefault, []() -> MeshBuffer const *
+							 {
+    auto *ret = new MeshBuffer(data_path("room.pnct"));
+    room_meshes_for_lit_color_texture_program =
+        ret->make_vao_for_program(lit_color_texture_program->program);
+    return ret; });
+
+Load<Scene> room_scene(LoadTagDefault, []() -> Scene const *
+					   { return new Scene(data_path("room.scene"), [&](Scene &scene, Scene::Transform *xf, std::string const &mesh_name)
+										  {
+        Mesh const &mesh = room_meshes->lookup(mesh_name);
+        scene.drawables.emplace_back(xf);
+        Scene::Drawable &dr = scene.drawables.back();
+        dr.pipeline = lit_color_texture_program_pipeline;
+        dr.pipeline.vao   = room_meshes_for_lit_color_texture_program;
+        dr.pipeline.type  = mesh.type;
+        dr.pipeline.start = mesh.start;
+        dr.pipeline.count = mesh.count; }); });
+
+PlayMode::PlayMode(Client &client_) : client(client_), scene(*room_scene)
 {
+	if (scene.cameras.size() != 1)
+	{
+		throw std::runtime_error("Expecting 1 camera in room.scene, found " + std::to_string(scene.cameras.size()));
+	}
+	camera = &scene.cameras.front();
 }
 
 PlayMode::~PlayMode()
@@ -22,9 +53,10 @@ PlayMode::~PlayMode()
 
 void PlayMode::send_login()
 {
-	Role role = (start_selected == 0) ? Role::Communicator : Role::Operative;
-	Game::send_login_message(&client.connection, role);
+	Role selected_role = (start_selected == 0) ? Role::Communicator : Role::Operative;
+	Game::send_login_message(&client.connection, selected_role);
 	// NOTE: data is actually pushed over the wire in client.poll() during update()
+	my_role = selected_role;
 }
 
 bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
@@ -212,12 +244,87 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			draw_text(glm::vec2(MARGIN_LEFT + 0.05f, INTRO_H - LINE_SPACING * 3), "[Enter] Log In", FONT_H);
 			return;
 		}
-		draw_text(glm::vec2(-0.1f, 0.0f), "start", FONT_H);
 
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
+		if(game.phase == Game::Phase::Communication)
+		{
+			// 3D scene pass:
+			camera->aspect = float(drawable_size.x) / float(drawable_size.y);
+
+			// simple directional light (same as your previous PlayMode)
+			glUseProgram(lit_color_texture_program->program);
+			glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
+			glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -1.0f)));
+			glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
+			glUseProgram(0);
+
+			glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+			glClearDepth(1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+
+			scene.draw(*camera);
+
+			glDisable(GL_DEPTH_TEST);
+
+			// 2D overlay UI after the scene:
+			float aspect = float(drawable_size.x) / float(drawable_size.y);
+			DrawLines lines(glm::mat4(
+				1.0f / aspect, 0, 0, 0,
+				0, 1.0f, 0, 0,
+				0, 0, 1, 0,
+				0, 0, 0, 1));
+
+			auto label = [&](glm::vec2 at, std::string const &s, float H)
+			{
+				glm::vec3 X(H, 0, 0), Y(0, H, 0);
+				glm::u8vec4 sh(0, 0, 0, 0xff), fg(0xff, 0xff, 0xff, 0xff);
+				float ofs = 2.0f / drawable_size.y;
+				lines.draw_text(s, glm::vec3(at, 0.0f), X, Y, sh);
+				lines.draw_text(s, glm::vec3(at.x + ofs, at.y + ofs, 0.0f), X, Y, fg);
+			};
+
+			// role-dependent text:
+			float y0 = +0.9f; // top-left in NDC
+			float dy = 0.08f;
+			float x0 = -0.95f;
+			float H = 0.06f;
+
+			if (my_role == Role::Communicator)
+			{
+				// label({x0, y0}, "目标已标记为红色。出于保密考虑，你的队友不会得到此情报，只有你掌握线索。", H);
+				// label({x0, y0 - dy}, "你必须在有限字符内向队友传递指令，确保队友能够识别目标物体。", H);
+				// label({x0, y0 - 2 * dy}, "注意：因技术限制，传输过程中将有一半讯息遭到损毁。请谨慎输入。", H);
+				label({x0, y0 - 4 * dy}, "The target objects have been marked in red. For security reasons, your teammate will not receive this information.", H * 0.9f);
+				label({x0, y0 - 5 * dy}, "Only you hold the clue.", H * 0.9f);
+				label({x0, y0 - 6 * dy}, "You must send instructions to your teammate within a strict character limit, ensuring your teammate can identify the targets.", H * 0.9f);
+				label({x0, y0 - 7 * dy}, "Warning: Half the message will be lost in transmission. Proceed with caution.", H * 0.9f);
+
+				// simple "Send" button label (visual only for now)
+				label({x0, y0 - 9 * dy}, "[ Send ]", H);
+			}
+			else if (my_role == Role::Operative)
+			{
+				// label({x0, y0}, "联络员即将向你发送包含目标物体信息的指令。因技术限制，传输过程中约有一半讯息会被破坏。", H);
+				// label({x0, y0 - dy}, "你将收到残缺指令，并解码其内容，随后前往餐厅寻找目标物体。", H);
+				// label({x0, y0 - 2 * dy}, "行动须谨慎。多次误判或遗漏等同于任务失败。", H);
+				label({x0, y0 - 4 * dy}, "The communicator will soon send you instructions containing details of the target objects.", H * 0.9f);
+				label({x0, y0 - 5 * dy}, "Due to technical constraints, roughly half of the message will be lost in transit.", H * 0.9f);
+				label({x0, y0 - 6 * dy}, "You will receive a corrupted instruction, decode its contents, and locate the targets at the restaurant.", H * 0.9f);
+				label({x0, y0 - 7 * dy}, "Act with caution. Repeated errors or omissions will be treated as mission failure.", H * 0.9f);
+			}
+
+			GL_ERRORS();
+			return;
+		}
+
+		// draw_text(glm::vec2(-0.1f, 0.0f), "start", FONT_H);
+
+		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
+		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
+		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
+		// lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
 		return;
 	}
 	GL_ERRORS();

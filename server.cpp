@@ -117,7 +117,7 @@ int main(int argc, char **argv)
 								// store the role on this player however you like; e.g.:
 								player.role = chosen; // add `Role role = Role::Unknown;` to your Player
 								//TODO: check both roles present before starting
-								game.phase = Game::Phase::Playing;
+								game.phase = Game::Phase::Communication;
 							}
 						} while (handled_message);
 					} catch (std::exception const &e) {

@@ -1,4 +1,5 @@
 #include "Mode.hpp"
+#include "Scene.hpp"
 
 #include "Connection.hpp"
 #include "Game.hpp"
@@ -31,6 +32,11 @@ struct PlayMode : Mode
 
 	// connection to server:
 	Client &client;
+
+	Role my_role = Role::Unknown;
+
+	Scene scene;  // a local copy (constructed from the loaded scene)
+    Scene::Camera *camera = nullptr;
 
 	// --- Lobby phase ---
 	// UI state is driven by server phase, but we keep local selection to send as login:
