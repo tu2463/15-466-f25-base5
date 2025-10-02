@@ -34,9 +34,10 @@ Connect to the server as a new player:
 
 ## Sources:
 
-> list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.)
+> list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.
 
 - https://www.blenderkit.com/get-blenderkit/7666f504-12b6-4015-a19e-57f451cd7bf4/
+- https://fonts.google.com/specimen/Courier+Prime?preview.layout=grid&query=courier
 
 This game was built with [NEST](NEST.md).
 
