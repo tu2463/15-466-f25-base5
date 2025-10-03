@@ -332,9 +332,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 		// 					glm::u8vec4(0xff, 0xff, 0xff, 0x00));
 		// };
 
-		// float MARGIN_TOP = 0.8f;
-		// float LINE_SPACING = 0.12f;
-		// float FONT_H = 0.09f;
+		float MARGIN_TOP = 0.95f;
+		float FONT_H = 0.06f;
+		float LINE_SPACING = FONT_H * 1.6f;
 		float MARGIN_LEFT = -1.5f;
 
 		// 2D overlay space (NDC-ish), same framing you used:
@@ -346,44 +346,19 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			0, 0, 0, 1);
 
 		// baseline sizes (in "world" units): H controls visual point size
-		const float H = 0.06f;
-		glm::vec3 X = glm::vec3(H, 0, 0);
-		glm::vec3 Y = glm::vec3(0, H, 0);
-
-		// margins:
-		float y0 = +0.9f, dy = 0.08f;
+		glm::vec3 X = glm::vec3(FONT_H, 0, 0);
+		glm::vec3 Y = glm::vec3(0, FONT_H, 0);
 
 		if (game.phase == Game::Phase::Lobby)
 		{
-			draw_shaped_text("Enter your identity for further instruction:", {MARGIN_LEFT, y0, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
-			std::string op0 = (start_selected == 0 ? "> " : "  ") + std::string("Communicator") + (start_selected == 0 ? " <" : "");
-			std::string op1 = (start_selected == 1 ? "> " : "  ") + std::string("Operative") + (start_selected == 1 ? " <" : "");
-			draw_shaped_text(op0, {MARGIN_LEFT + 0.05f, y0 - 2 * dy, 0}, X, Y, {255, 255, 0, 255}, clip);
-			draw_shaped_text(op1, {MARGIN_LEFT + 0.05f, y0 - 3 * dy, 0}, X, Y, {255, 255, 0, 255}, clip);
-			draw_shaped_text("[Enter] Log In", {MARGIN_LEFT + 0.05f, y0 - 5 * dy, 0}, X, Y, {200, 200, 200, 255}, clip);
+			draw_shaped_text("Enter your identity for further instruction:", {MARGIN_LEFT, MARGIN_TOP, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
+			std::string role_1 = (start_selected == 0 ? "> " : "  ") + std::string("Communicator") + (start_selected == 0 ? " <" : "");
+			std::string role_2 = (start_selected == 1 ? "> " : "  ") + std::string("Operative") + (start_selected == 1 ? " <" : "");
+			draw_shaped_text(role_1, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 2 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
+			draw_shaped_text(role_2, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 3 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
+			draw_shaped_text("[Enter] Log In", {MARGIN_LEFT + 0.05f, MARGIN_TOP - 5 * LINE_SPACING, 0}, X, Y, {200, 200, 200, 255}, clip);
 			GL_ERRORS();
 			return;
-
-			// // intro text (from server)
-			// draw_text(glm::vec2(MARGIN_LEFT, MARGIN_TOP), "Welcome back to the terminal, comrade. All current intelligence points to a restaurant. ", FONT_H * 0.6f);
-			// draw_text(glm::vec2(MARGIN_LEFT, MARGIN_TOP - LINE_SPACING), "It may conceal clues vital to your next move. You and your team must investigate immediately. ", FONT_H * 0.6f);
-			// draw_text(glm::vec2(MARGIN_LEFT, MARGIN_TOP - LINE_SPACING * 2), "Time is of the essence.", FONT_H * 0.6f);
-
-			// draw_text(glm::vec2(MARGIN_LEFT, MARGIN_TOP - LINE_SPACING * 4), "Enter your identity for further instruction:", FONT_H * 0.6f);
-
-			// float INTRO_H = MARGIN_TOP - LINE_SPACING * 6;
-
-			// auto draw_option = [&](char const *label, int idx)
-			// {
-			// 	bool is_selected = (start_selected == idx);
-			// 	std::string s = std::string(is_selected ? "> " : "  ") + label + (is_selected ? " <" : "");
-			// 	draw_text(glm::vec2(MARGIN_LEFT + 0.05f, INTRO_H - LINE_SPACING * idx), s, FONT_H);
-			// };
-			// draw_option("Communicator", 0);
-			// draw_option("Operative", 1);
-
-			// draw_text(glm::vec2(MARGIN_LEFT + 0.05f, INTRO_H - LINE_SPACING * 3), "[Enter] Log In", FONT_H);
-			// return;
 		}
 
 		if (game.phase == Game::Phase::Communication)
@@ -417,45 +392,20 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 				0, 0, 1, 0,
 				0, 0, 0, 1));
 
-			// auto label = [&](glm::vec2 at, std::string const &s, float H)
-			// {
-			// 	glm::vec3 X(H, 0, 0), Y(0, H, 0);
-			// 	glm::u8vec4 sh(0, 0, 0, 0xff), fg(0xff, 0xff, 0xff, 0xff);
-			// 	float ofs = 2.0f / drawable_size.y;
-			// 	lines.draw_text(s, glm::vec3(at, 0.0f), X, Y, sh);
-			// 	lines.draw_text(s, glm::vec3(at.x + ofs, at.y + ofs, 0.0f), X, Y, fg);
-			// };
-
-			// role-dependent text:
-			float y0 = +0.9f; // top-left in NDC
-			float dy = 0.08f;
-			// float H = 0.06f;
-
 			if (my_role == Role::Communicator)
 			{
-				draw_shaped_text("The target objects have been marked in red. For security reasons, your teammate will not receive this information.", {MARGIN_LEFT, y0 - 4 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("Only you hold the clue.", {MARGIN_LEFT, y0 - 5 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("You must send instructions to your teammate within a strict character limit, ensuring your teammate can identify the targets.", {MARGIN_LEFT, y0 - 6 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("Warning: Half the message will be lost in transmission. Proceed with caution.", {MARGIN_LEFT, y0 - 7 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 220, 220, 255}, clip);
-				draw_shaped_text("[ Send ]", {MARGIN_LEFT, y0 - 9 * dy, 0}, X, Y, {255, 255, 0, 255}, clip);
-
-				// label({MARGIN_LEFT, y0 - 4 * dy}, "The target objects have been marked in red. For security reasons, your teammate will not receive this information.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 5 * dy}, "Only you hold the clue.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 6 * dy}, "You must send instructions to your teammate within a strict character limit, ensuring your teammate can identify the targets.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 7 * dy}, "Warning: Half the message will be lost in transmission. Proceed with caution.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 9 * dy}, "[ Send ]", H);
+				draw_shaped_text("The target objects have been marked in red. For security reasons, your teammate will not receive this information.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("Only you hold the clue.", {MARGIN_LEFT, MARGIN_TOP - 5 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("You must send instructions to your teammate within a strict character limit, ensuring your teammate can identify the targets.", {MARGIN_LEFT, MARGIN_TOP - 6 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("Warning: Half the message will be lost in transmission. Proceed with caution.", {MARGIN_LEFT, MARGIN_TOP - 7 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 220, 220, 255}, clip);
+				draw_shaped_text("[Enter] Send", {MARGIN_LEFT, MARGIN_TOP - 9 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
 			}
 			else if (my_role == Role::Operative)
 			{
-				draw_shaped_text("The communicator will soon send you instructions containing details of the target objects.", {MARGIN_LEFT, y0 - 4 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("Due to technical constraints, roughly half of the message will be lost in transit.", {MARGIN_LEFT, y0 - 5 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("You will receive a corrupted instruction, decode its contents, and locate the targets at the restaurant.", {MARGIN_LEFT, y0 - 6 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
-				draw_shaped_text("Act with caution. Repeated errors or omissions will be treated as mission failure.", {MARGIN_LEFT, y0 - 7 * dy, 0}, 0.9f * X, 0.9f * Y, {255, 220, 220, 255}, clip);
-				
-				// label({MARGIN_LEFT, y0 - 4 * dy}, "The communicator will soon send you instructions containing details of the target objects.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 5 * dy}, "Due to technical constraints, roughly half of the message will be lost in transit.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 6 * dy}, "You will receive a corrupted instruction, decode its contents, and locate the targets at the restaurant.", H * 0.9f);
-				// label({MARGIN_LEFT, y0 - 7 * dy}, "Act with caution. Repeated errors or omissions will be treated as mission failure.", H * 0.9f);
+				draw_shaped_text("The communicator will soon send you instructions containing details of the target objects.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("Due to technical constraints, roughly half of the message will be lost in transit.", {MARGIN_LEFT, MARGIN_TOP - 5 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("You will receive a corrupted instruction, decode its contents, and locate the targets at the restaurant.", {MARGIN_LEFT, MARGIN_TOP - 6 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
+				draw_shaped_text("Act with caution. Repeated errors or omissions will be treated as mission failure.", {MARGIN_LEFT, MARGIN_TOP - 7 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 220, 220, 255}, clip);
 			}
 
 			GL_ERRORS();
