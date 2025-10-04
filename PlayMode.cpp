@@ -242,9 +242,11 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			}
 			else if (evt.key.key == SDLK_RETURN || evt.key.key == SDLK_KP_ENTER)
 			{
-				// TODO: send message to server in a later task.
-				// For now, just keep it typed; or clear it if you prefer:
-				// input_text.clear();
+				if (!input_text.empty())
+				{
+					// Don't flip phase locally; server will broadcast Operation+text.
+					Game::send_instruction_message(&client.connection, input_text);
+				}
 				return true;
 			}
 		}
@@ -418,7 +420,33 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			return;
 		}
 
-		// draw_text(glm::vec2(-0.1f, 0.0f), "start", FONT_H);
+		if (game.phase == Game::Phase::Operation)
+		{
+			// 3D scene:
+			camera->aspect = float(drawable_size.x) / float(drawable_size.y);
+
+			glUseProgram(lit_color_texture_program->program);
+			glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
+			glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -1.0f)));
+			glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
+			glUseProgram(0);
+
+			glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+			glClearDepth(1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+			scene.draw(*camera);
+			glDisable(GL_DEPTH_TEST);
+
+			// Draw the submitted text from the server (same for both roles):
+			draw_shaped_text("INSTRUCTIONS:", {-1.5f, +0.9f, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
+			draw_shaped_text(game.instruction_text, {-1.5f, +0.9f - 1.6f * FONT_H, 0}, X, Y, {255, 255, 0, 255}, clip);
+
+			GL_ERRORS();
+			return;
+		}
 
 		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
 		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));

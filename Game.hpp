@@ -17,6 +17,7 @@ enum class Message : uint8_t {
 	S2C_State = 's',
 	//...
 	C2S_Login = 'L',
+	C2S_Instruction = 'I',
 };
 
 //used to represent a control input:
@@ -77,8 +78,8 @@ struct Game {
 	inline static constexpr float PlayerSpeed = 2.0f;
 	inline static constexpr float PlayerAccelHalflife = 0.25f;
 
-	// --- State ---
-	enum class Phase : uint8_t { Lobby = 0, Communication = 1 };
+	// --- Phase ---
+	enum class Phase : uint8_t { Lobby = 0, Communication = 1, Operation = 2 };
     Phase phase = Phase::Lobby;
 
 	//---- communication helpers ----
@@ -95,4 +96,8 @@ struct Game {
 
 	static void send_login_message(Connection *c, Role role);
     static bool recv_login_message(Connection *c, Role *out_role);
+
+	std::string instruction_text;
+	static void send_instruction_message(Connection* c, std::string const& utf8);
+    static bool recv_instruction_message(Connection* c, std::string* out_utf8);
 };

@@ -119,6 +119,15 @@ int main(int argc, char **argv)
 								//TODO: check both roles present before starting
 								game.phase = Game::Phase::Communication;
 							}
+
+							std::string typed;
+							if (Game::recv_instruction_message(c, &typed))
+							{
+								handled_message = true;
+								// Move to Operation phase and store the message:
+								game.instruction_text = typed;
+								game.phase = Game::Phase::Operation;
+							}
 						} while (handled_message);
 					} catch (std::exception const &e) {
 						std::cout << "Disconnecting client:" << e.what() << std::endl;

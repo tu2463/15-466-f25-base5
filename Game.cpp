@@ -258,6 +258,14 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		send_player(player);
 	}
 
+	if (phase == Phase::Operation)
+	{
+		uint16_t N = (uint16_t)std::min<size_t>(65535, instruction_text.size());
+		connection.send(N);
+		connection.send_buffer.insert(connection.send_buffer.end(),
+									  instruction_text.begin(), instruction_text.begin() + N);
+	}
+
 	// compute the message size and patch into the message header:
 	uint32_t size = uint32_t(connection.send_buffer.size() - mark);
 	connection.send_buffer[mark - 3] = uint8_t(size);
@@ -319,6 +327,16 @@ bool Game::recv_state_message(Connection *connection_)
 		}
 	}
 
+	if (phase == Phase::Operation)
+	{
+		uint16_t N;
+		read(&N);
+		instruction_text.resize(N);
+		if (N)
+			std::memcpy(&instruction_text[0], &recv_buffer[4 + at], N);
+		at += N;
+	}
+
 	if (at != size)
 		throw std::runtime_error("Trailing data in state message.");
 
@@ -369,4 +387,42 @@ bool Game::recv_login_message(Connection *connection_, Role *out_role)
 	// pop message
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
 	return true;
+}
+
+void Game::send_instruction_message(Connection *connection_, std::string const& utf8) {
+    assert(connection_);
+    auto &connection = *connection_;
+
+    // payload = uint16 N + N bytes:
+    uint16_t N = (uint16_t)std::min<size_t>(utf8.size(), 65535);
+
+    connection.send(uint8_t(Message::C2S_Instruction));
+    uint32_t payload = 2u + uint32_t(N);
+    connection.send(uint8_t(payload));
+    connection.send(uint8_t(payload >> 8));
+    connection.send(uint8_t(payload >> 16));
+
+    connection.send(N);
+    connection.send_buffer.insert(connection.send_buffer.end(), utf8.begin(), utf8.begin() + N);
+}
+
+bool Game::recv_instruction_message(Connection *connection_, std::string* out_utf8) {
+    assert(connection_);
+    auto &connection = *connection_;
+    auto &recv_buffer = connection.recv_buffer;
+
+    if (recv_buffer.size() < 4) return false;
+    if (recv_buffer[0] != uint8_t(Message::C2S_Instruction)) return false;
+
+    uint32_t size = (uint32_t(recv_buffer[3]) << 16) | (uint32_t(recv_buffer[2]) << 8) | uint32_t(recv_buffer[1]);
+    if (recv_buffer.size() < 4 + size) return false;
+
+    if (size < 2) throw std::runtime_error("Instruction payload too small");
+    uint16_t N;
+    std::memcpy(&N, &recv_buffer[4], 2);
+    if (2u + N != size) throw std::runtime_error("Instruction payload size mismatch");
+    if (out_utf8) out_utf8->assign((char const*)&recv_buffer[6], (char const*)&recv_buffer[6] + N);
+
+    recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);
+    return true;
 }
