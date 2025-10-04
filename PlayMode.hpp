@@ -14,7 +14,7 @@
 
 struct PlayMode : Mode
 {
-	PlayMode(Client &client);
+	PlayMode(Client &client, SDL_Window *window);
 	virtual ~PlayMode();
 
 	// functions called by main loop:
@@ -57,11 +57,20 @@ struct PlayMode : Mode
 	GLint text_uColor = -1, text_uTex = -1, text_uClip = -1;
 	GLuint text_vao = 0, text_vbo = 0;
 
-	// helper:
 	void draw_shaped_text(
 		const std::string &s,
 		glm::vec3 const &anchor_in,
 		glm::vec3 const &x, glm::vec3 const &y,
 		glm::u8vec4 const &color,
 		glm::mat4 const &world_to_clip);
+
+	// --- Text input ---
+	SDL_Window *sdl_window = nullptr;
+	bool text_input_active = false;
+	std::string input_text; // what user typed (UTF-8)
+	static constexpr size_t kMaxChars = 150;
+	float caret_time = 0.0f; // for blinking caret
+
+private:
+	void ensure_text_input_state();
 };

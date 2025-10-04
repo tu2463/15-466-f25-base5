@@ -39,8 +39,20 @@ Load<Scene> room_scene(LoadTagDefault, []() -> Scene const *
         dr.pipeline.start = mesh.start;
         dr.pipeline.count = mesh.count; }); });
 
-PlayMode::PlayMode(Client &client_) : client(client_), scene(*room_scene)
+static void utf8_pop_back(std::string &s)
 {
+	if (s.empty())
+		return;
+	size_t i = s.size() - 1;
+	// move left while on UTF-8 continuation bytes (10xxxxxx):
+	while (i > 0 && (uint8_t(s[i]) & 0b11000000) == 0b10000000)
+		--i;
+	s.erase(i);
+}
+
+PlayMode::PlayMode(Client &client_, SDL_Window* window_) : client(client_), scene(*room_scene)
+{
+	sdl_window = window_;
 	if (scene.cameras.size() != 1)
 	{
 		throw std::runtime_error("Expecting 1 camera in room.scene, found " + std::to_string(scene.cameras.size()));
@@ -165,6 +177,8 @@ void PlayMode::draw_shaped_text(
 
 PlayMode::~PlayMode()
 {
+	if (text_input_active && sdl_window)
+		SDL_StopTextInput(sdl_window);
 }
 
 void PlayMode::send_login()
@@ -201,55 +215,64 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		return false;
 	}
 
-	// if (evt.type == SDL_EVENT_KEY_DOWN) {
-	// 	if (evt.key.repeat) {
-	// 		//ignore repeats
-	// 	} else if (evt.key.key == SDLK_A) {
-	// 		controls.left.downs += 1;
-	// 		controls.left.pressed = true;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_D) {
-	// 		controls.right.downs += 1;
-	// 		controls.right.pressed = true;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_W) {
-	// 		controls.up.downs += 1;
-	// 		controls.up.pressed = true;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_S) {
-	// 		controls.down.downs += 1;
-	// 		controls.down.pressed = true;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_SPACE) {
-	// 		controls.jump.downs += 1;
-	// 		controls.jump.pressed = true;
-	// 		return true;
-	// 	}
-	// } else if (evt.type == SDL_EVENT_KEY_UP) {
-	// 	if (evt.key.key == SDLK_A) {
-	// 		controls.left.pressed = false;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_D) {
-	// 		controls.right.pressed = false;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_W) {
-	// 		controls.up.pressed = false;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_S) {
-	// 		controls.down.pressed = false;
-	// 		return true;
-	// 	} else if (evt.key.key == SDLK_SPACE) {
-	// 		controls.jump.pressed = false;
-	// 		return true;
-	// 	}
-	// }
+	if (game.phase == Game::Phase::Communication && my_role == Role::Communicator)
+	{
+		// accept text input events (IME-friendly):
+		if (evt.type == SDL_EVENT_TEXT_INPUT && text_input_active)
+		{
+			// append, enforce char limit (count by Unicode codepoints if you want; for now limit bytes)
+			if (input_text.size() + std::strlen(evt.text.text) <= kMaxChars)
+			{
+				input_text.append(evt.text.text);
+			}
+			else
+			{
+				// trim to max
+				size_t room = (kMaxChars > input_text.size()) ? (kMaxChars - input_text.size()) : 0;
+				input_text.append(evt.text.text, room);
+			}
+			return true;
+		}
+		if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat)
+		{
+			if (evt.key.key == SDLK_BACKSPACE)
+			{
+				utf8_pop_back(input_text);
+				return true;
+			}
+			else if (evt.key.key == SDLK_RETURN || evt.key.key == SDLK_KP_ENTER)
+			{
+				// TODO: send message to server in a later task.
+				// For now, just keep it typed; or clear it if you prefer:
+				// input_text.clear();
+				return true;
+			}
+		}
+		// swallow other keys here if you don't want gameplay to trigger
+	}
 
 	return false;
 }
 
+void PlayMode::ensure_text_input_state()
+	{
+		bool should_be_active = (game.phase == Game::Phase::Communication && my_role == Role::Communicator);
+		if (should_be_active && !text_input_active)
+		{
+			if (sdl_window)
+				SDL_StartTextInput(sdl_window); // returns bool; we ignore for brevity
+			text_input_active = true;
+		}
+		else if (!should_be_active && text_input_active)
+		{
+			if (sdl_window)
+				SDL_StopTextInput(sdl_window);
+			text_input_active = false;
+		}
+	}
+
 void PlayMode::update(float elapsed)
 {
-
 	// queue data for sending to server:
 	controls.send_controls_message(&client.connection);
 
@@ -282,22 +305,13 @@ void PlayMode::update(float elapsed)
 				throw e;
 			}
 		} }, 0.0);
+
+	ensure_text_input_state();
+	caret_time += elapsed;
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size)
 {
-
-	// static std::array<glm::vec2, 16> const circle = []()
-	// {
-	// 	std::array<glm::vec2, 16> ret;
-	// 	for (uint32_t a = 0; a < ret.size(); ++a)
-	// 	{
-	// 		float ang = a / float(ret.size()) * 2.0f * float(M_PI);
-	// 		ret[a] = glm::vec2(std::cos(ang), std::sin(ang));
-	// 	}
-	// 	return ret;
-	// }();
-
 	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glDisable(GL_DEPTH_TEST);
@@ -316,25 +330,9 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 		0.0f, 0.0f, 0.0f, 1.0f);
 
 	{
-		// DrawLines lines(world_to_clip);
-
-		// // helper:
-		// auto draw_text = [&](glm::vec2 const &at, std::string const &text, float H)
-		// {
-		// 	lines.draw_text(text,
-		// 					glm::vec3(at.x, at.y, 0.0),
-		// 					glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-		// 					glm::u8vec4(0x00, 0x00, 0x00, 0x00));
-		// 	float ofs = (1.0f / scale) / drawable_size.y;
-		// 	lines.draw_text(text,
-		// 					glm::vec3(at.x + ofs, at.y + ofs, 0.0),
-		// 					glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
-		// 					glm::u8vec4(0xff, 0xff, 0xff, 0x00));
-		// };
-
 		float MARGIN_TOP = 0.95f;
 		float FONT_H = 0.06f;
-		float LINE_SPACING = FONT_H * 1.6f;
+		float LINE_SPACING = FONT_H * 1.4f;
 		float MARGIN_LEFT = -1.5f;
 
 		// 2D overlay space (NDC-ish), same framing you used:
@@ -345,7 +343,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			0, 0, 1, 0,
 			0, 0, 0, 1);
 
-		// baseline sizes (in "world" units): H controls visual point size
+		// baseline sizes (in "world" units): FONT_H controls visual point size
 		glm::vec3 X = glm::vec3(FONT_H, 0, 0);
 		glm::vec3 Y = glm::vec3(0, FONT_H, 0);
 
@@ -385,7 +383,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			glDisable(GL_DEPTH_TEST);
 
 			// 2D overlay UI after the scene:
-			float aspect = float(drawable_size.x) / float(drawable_size.y);
 			DrawLines lines(glm::mat4(
 				1.0f / aspect, 0, 0, 0,
 				0, 1.0f, 0, 0,
@@ -398,7 +395,16 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 				draw_shaped_text("Only you hold the clue.", {MARGIN_LEFT, MARGIN_TOP - 5 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
 				draw_shaped_text("You must send instructions to your teammate within a strict character limit, ensuring your teammate can identify the targets.", {MARGIN_LEFT, MARGIN_TOP - 6 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 255, 255, 255}, clip);
 				draw_shaped_text("Warning: Half the message will be lost in transmission. Proceed with caution.", {MARGIN_LEFT, MARGIN_TOP - 7 * LINE_SPACING, 0}, 0.9f * X, 0.9f * Y, {255, 220, 220, 255}, clip);
-				draw_shaped_text("[Enter] Send", {MARGIN_LEFT, MARGIN_TOP - 9 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
+
+				float INPUT_TOP = MARGIN_TOP - 11.0f * LINE_SPACING; // a bit under your instructions
+				draw_shaped_text("MESSAGE (max 150):", {MARGIN_LEFT, INPUT_TOP, 0}, X, Y, {255, 255, 255, 255}, clip);
+
+				// caret blink at 1Hz:
+				bool caret_on = (std::fmod(caret_time, 1.0f) < 0.5f);
+				std::string view = input_text + (caret_on ? "|" : " ");
+
+				draw_shaped_text(view, {MARGIN_LEFT, INPUT_TOP - LINE_SPACING, 0}, 0.6f * X, 0.6f * Y, {255, 255, 0, 255}, clip);
+				draw_shaped_text("[Enter] Send", {MARGIN_LEFT, INPUT_TOP - 2 * LINE_SPACING, 0}, X, Y, {200, 200, 200, 255}, clip);
 			}
 			else if (my_role == Role::Operative)
 			{
