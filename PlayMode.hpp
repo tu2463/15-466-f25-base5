@@ -43,6 +43,8 @@ struct PlayMode : Mode
 
 	// --- Lobby phase ---
 	// UI state is driven by server phase, but we keep local selection to send as login:
+	int last_selected_from_server = -1; // -1 = none applied yet
+
 	int start_selected = 0; // 0 = Communicator, 1 = Operative
 	bool start_pressed_login = false;
 

@@ -114,10 +114,44 @@ int main(int argc, char **argv)
 							if (Game::recv_login_message(c, &chosen))
 							{
 								handled_message = true;
-								// store the role on this player however you like; e.g.:
 								player.role = chosen; // add `Role role = Role::Unknown;` to your Player
-								//TODO: check both roles present before starting
-								game.phase = Game::Phase::Communication;
+								// Check role selection logic
+								
+								int cur_player_idx = (&player == &game.players.front()) ? 1 : 2;
+
+								auto set_selected_opposite = [](uint8_t &sel, Role chosen)
+								{
+									// chosen: 1=Communicator -> other should *select* Operative (1)
+									//         2=Operative    -> other should *select* Communicator (0)
+									sel = (chosen == Role::Communicator ? 1 : 0);
+								};
+
+								// write role_1/role_2 from the chosen enum value:
+								if (cur_player_idx == 1)
+									game.role_1 = uint8_t(chosen);
+								else
+									game.role_2 = uint8_t(chosen);
+
+								// figure out the other side:
+								uint8_t &other_role = (cur_player_idx == 1 ? game.role_2 : game.role_1);
+								uint8_t &other_sel = (cur_player_idx == 1 ? game.selected_role_2 : game.selected_role_1);
+
+								if (other_role == 0)
+								{
+									// unknown: wait for the other player
+									// (labels are derived client-side)
+								}
+								else if (other_role == uint8_t(chosen))
+								{
+									// same role: reset other to unknown, push their selection to the opposite:
+									other_role = 0;
+									set_selected_opposite(other_sel, chosen);
+								}
+								else
+								{
+									// complementary: both ready -> proceed to Communication
+									game.phase = Game::Phase::Communication;
+								}
 							}
 
 							std::string typed;

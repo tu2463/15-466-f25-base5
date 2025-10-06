@@ -233,6 +233,14 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 
 	connection.send(uint8_t(phase));
 
+	// Determine which player this connection is, for self_index
+    uint8_t idx = 0;
+    if (connection_player && players.size() >= 1) {
+        if (connection_player == &players.front()) idx = 1;
+        else if (players.size() >= 2) idx = 2;
+    }
+    connection.send(idx);    
+
 	// send player info helper:
 	auto send_player = [&](Player const &player)
 	{
@@ -258,6 +266,14 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		send_player(player);
 	}
 
+	// Phase-specific states
+	if (phase == Phase::Lobby)
+	{
+		connection.send(role_1);
+		connection.send(role_2);
+		connection.send(selected_role_1);
+		connection.send(selected_role_2);
+	}
 	if (phase == Phase::Operation)
 	{
 		uint16_t N = (uint16_t)std::min<size_t>(65535, instruction_text.size());
@@ -307,6 +323,8 @@ bool Game::recv_state_message(Connection *connection_)
     read(&ph);
     phase = Phase(ph);
 
+	read(&self_index);
+
 	players.clear();
 	uint8_t player_count;
 	read(&player_count);
@@ -329,6 +347,13 @@ bool Game::recv_state_message(Connection *connection_)
 		}
 	}
 
+	// Phase-specific states
+	if (phase == Phase::Lobby) {
+        read(&role_1);
+        read(&role_2);
+        read(&selected_role_1);
+        read(&selected_role_2);
+    }
 	if (phase == Phase::Operation)
 	{
 		uint16_t N;
@@ -384,9 +409,9 @@ bool Game::recv_login_message(Connection *connection_, Role *out_role)
 	if (recv_buffer.size() < 4 + size)
 		return false; // wait for full message
 
-	uint8_t r = recv_buffer[4];
+	uint8_t selected_role_index = recv_buffer[4];
 	if (out_role)
-		*out_role = Role(r);
+		*out_role = Role(selected_role_index);
 
 	// pop message
 	recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + 4 + size);

@@ -258,14 +258,13 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 
 void PlayMode::ensure_text_input_state()
 	{
-		bool should_be_active = (game.phase == Game::Phase::Communication && my_role == Role::Communicator);
-		if (should_be_active && !text_input_active)
+		if (my_role == Role::Communicator && !text_input_active)
 		{
 			if (sdl_window)
-				SDL_StartTextInput(sdl_window); // returns bool; we ignore for brevity
+				SDL_StartTextInput(sdl_window);
 			text_input_active = true;
 		}
-		else if (!should_be_active && text_input_active)
+		else if (my_role != Role::Communicator && text_input_active)
 		{
 			if (sdl_window)
 				SDL_StopTextInput(sdl_window);
@@ -308,8 +307,19 @@ void PlayMode::update(float elapsed)
 			}
 		} }, 0.0);
 
-	ensure_text_input_state();
-	caret_time += elapsed;
+	if (game.phase == Game::Phase::Lobby && (game.self_index == 1 || game.self_index == 2))
+	{
+		int server_selected = (game.self_index == 1) ? int(game.selected_role_1) : int(game.selected_role_2);
+		if (server_selected != last_selected_from_server)
+		{
+			start_selected = server_selected; // the other player's selection forces the current player's selection to change
+			last_selected_from_server = server_selected;
+		}
+	}
+	if (game.phase == Game::Phase::Communication) {
+		caret_time += elapsed;
+		ensure_text_input_state();
+	}
 }
 
 void PlayMode::draw(glm::uvec2 const &drawable_size)
@@ -352,11 +362,24 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 		if (game.phase == Game::Phase::Lobby)
 		{
 			draw_shaped_text("Enter your identity for further instruction:", {MARGIN_LEFT, MARGIN_TOP, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
-			std::string role_1 = (start_selected == 0 ? "> " : "  ") + std::string("Communicator") + (start_selected == 0 ? " <" : "");
-			std::string role_2 = (start_selected == 1 ? "> " : "  ") + std::string("Operative") + (start_selected == 1 ? " <" : "");
-			draw_shaped_text(role_1, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 2 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
-			draw_shaped_text(role_2, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 3 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
-			draw_shaped_text("[Enter] Log In", {MARGIN_LEFT + 0.05f, MARGIN_TOP - 5 * LINE_SPACING, 0}, X, Y, {200, 200, 200, 255}, clip);
+			// selection arrows use the current local 'start_selected' (possibly overridden by server)
+			std::string option_0 = (start_selected == 0 ? "> " : "  ") + std::string("Communicator") + (start_selected == 0 ? " <" : "");
+			std::string option_1 = (start_selected == 1 ? "> " : "  ") + std::string("Operative") + (start_selected == 1 ? " <" : "");
+			draw_shaped_text(option_0, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 2 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
+			draw_shaped_text(option_1, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 3 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
+
+			// label depends on whether this client has chosen a role
+			uint8_t my_role = 0; // unknown
+			if (game.self_index == 1)
+				my_role = game.role_1;
+			else if (game.self_index == 2)
+				my_role = game.role_2;
+
+			std::string label = (my_role == 0)
+									? "[Enter] Log In"
+									: "[Enter] Log In; Waiting for your teammate to log in…";
+
+			draw_shaped_text(label, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 5 * LINE_SPACING, 0}, X, Y, {200, 200, 200, 255}, clip);
 			GL_ERRORS();
 			return;
 		}

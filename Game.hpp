@@ -95,6 +95,14 @@ struct Game {
 	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
 
 	// Lobby Phase
+	uint8_t role_1 = 0; // Role enum: 0 Unknown, 1 Communicator, 2 Operative
+	uint8_t role_2 = 0;
+	uint8_t selected_role_1 = 0; // 0 = Communicator, 1 = Operative
+	uint8_t selected_role_2 = 1;
+
+	// broadcast self_index in the snapshot so each client can tell if it’s P1 or P2.
+	uint8_t self_index = 0;
+
 	static void send_login_message(Connection *c, Role role);
     static bool recv_login_message(Connection *c, Role *out_role);
 
