@@ -276,10 +276,10 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 	}
 	if (phase == Phase::Operation)
 	{
-		uint16_t N = (uint16_t)std::min<size_t>(65535, instruction_text.size());
+		uint16_t N = (uint16_t)std::min<size_t>(65535, corrupted_instruction.size());
 		connection.send(N);
 		connection.send_buffer.insert(connection.send_buffer.end(),
-									  instruction_text.begin(), instruction_text.begin() + N);
+									  corrupted_instruction.begin(), corrupted_instruction.begin() + N);
 		connection.send(found_count);
 		connection.send(attempt_count);
 	}
@@ -358,9 +358,9 @@ bool Game::recv_state_message(Connection *connection_)
 	{
 		uint16_t N;
 		read(&N);
-		instruction_text.resize(N);
+		corrupted_instruction.resize(N);
 		if (N)
-			std::memcpy(&instruction_text[0], &recv_buffer[4 + at], N);
+			std::memcpy(&corrupted_instruction[0], &recv_buffer[4 + at], N);
 		at += N;
 		read(&found_count);
 		read(&attempt_count);

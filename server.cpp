@@ -188,6 +188,25 @@ int main(int argc, char **argv)
 								game.found_count = 0;
 								game.attempt_count = 25;
 								game.instruction_text = typed;
+
+								// corrupt instruction: replace 50% of non-space chars with '*'
+								std::string corrupted = typed;
+								std::vector<size_t> nonspace;
+								nonspace.reserve(corrupted.size());
+								for (size_t i = 0; i < corrupted.size(); ++i)
+								{
+									if (corrupted[i] != ' ')
+										nonspace.push_back(i);
+								}
+								size_t replace_n = nonspace.size() / 2; // 50%
+								std::mt19937 rng{std::random_device{}()};
+								std::shuffle(nonspace.begin(), nonspace.end(), rng);
+								for (size_t k = 0; k < replace_n; ++k)
+								{
+									corrupted[nonspace[k]] = '*';
+								}
+								game.corrupted_instruction = std::move(corrupted);
+
 								game.phase = Game::Phase::Operation;
 							}
 						} while (handled_message);

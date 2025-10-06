@@ -113,6 +113,7 @@ struct Game {
 
 	// Communication Phase
 	std::string instruction_text;
+	std::string corrupted_instruction;
 	static void send_instruction_message(Connection *c, std::string const &utf8);
 	static bool recv_instruction_message(Connection *c, std::string *out_utf8);
 
