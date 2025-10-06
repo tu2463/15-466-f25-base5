@@ -125,6 +125,8 @@ int main(int argc, char **argv)
 							{
 								handled_message = true;
 								// Move to Operation phase and store the message:
+								game.found_count = 0;
+								game.attempt_count = 25;
 								game.instruction_text = typed;
 								game.phase = Game::Phase::Operation;
 							}

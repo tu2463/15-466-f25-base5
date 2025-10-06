@@ -94,10 +94,16 @@ struct Game {
 	//  Will move "connection_player" to the front of the front of the sent list.
 	void send_state_message(Connection *connection, Player *connection_player = nullptr) const;
 
+	// Lobby Phase
 	static void send_login_message(Connection *c, Role role);
     static bool recv_login_message(Connection *c, Role *out_role);
 
+	// Communication Phase
 	std::string instruction_text;
-	static void send_instruction_message(Connection* c, std::string const& utf8);
-    static bool recv_instruction_message(Connection* c, std::string* out_utf8);
+	static void send_instruction_message(Connection *c, std::string const &utf8);
+	static bool recv_instruction_message(Connection *c, std::string *out_utf8);
+
+	// Opreation Phase
+	uint8_t found_count = 0;
+	uint8_t attempt_count = 25;
 };

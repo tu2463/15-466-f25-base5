@@ -444,6 +444,14 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			draw_shaped_text("INSTRUCTIONS:", {-1.5f, +0.9f, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
 			draw_shaped_text(game.instruction_text, {-1.5f, +0.9f - 1.6f * FONT_H, 0}, X, Y, {255, 255, 0, 255}, clip);
 
+			float STATS_TOP = +0.9f - 3.0f * FONT_H;
+			draw_shaped_text(
+				"Found: " + std::to_string(game.found_count) + " / 5",
+				{-1.5f, STATS_TOP, 0}, 0.8f * X, 0.8f * Y, {220, 255, 220, 255}, clip);
+			draw_shaped_text(
+				"Attempts left: " + std::to_string(game.attempt_count),
+				{-1.5f, STATS_TOP - 1.2f * FONT_H, 0}, 0.8f * X, 0.8f * Y, {220, 220, 255, 255}, clip);
+
 			GL_ERRORS();
 			return;
 		}

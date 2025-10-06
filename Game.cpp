@@ -264,6 +264,8 @@ void Game::send_state_message(Connection *connection_, Player *connection_player
 		connection.send(N);
 		connection.send_buffer.insert(connection.send_buffer.end(),
 									  instruction_text.begin(), instruction_text.begin() + N);
+		connection.send(found_count);
+		connection.send(attempt_count);
 	}
 
 	// compute the message size and patch into the message header:
@@ -335,6 +337,8 @@ bool Game::recv_state_message(Connection *connection_)
 		if (N)
 			std::memcpy(&instruction_text[0], &recv_buffer[4 + at], N);
 		at += N;
+		read(&found_count);
+		read(&attempt_count);
 	}
 
 	if (at != size)
