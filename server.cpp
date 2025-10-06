@@ -111,6 +111,23 @@ int main(int argc, char **argv)
 							//TODO: extend for more message types as needed
 
 							Role chosen;
+							uint8_t selected;
+							if (Game::recv_selected_role_message(c, &selected))
+							{
+								handled_message = true;
+
+								// who sent this?
+								int idx = (&player == &game.players.front()) ? 1 : 2;
+
+								if (idx == 1)
+									game.selected_role_1 = selected;
+								else
+									game.selected_role_2 = selected;
+
+								// NOTE: per your spec, we do NOT touch role_1/role_2 here.
+								// Conflict resolution stays in the login (Enter) path.
+							}
+
 							if (Game::recv_login_message(c, &chosen))
 							{
 								handled_message = true;
@@ -119,22 +136,31 @@ int main(int argc, char **argv)
 								
 								int cur_player_idx = (&player == &game.players.front()) ? 1 : 2;
 
-								auto set_selected_opposite = [](uint8_t &sel, Role chosen)
+								auto set_selected_opposite = [](uint8_t &selected, Role chosen)
 								{
 									// chosen: 1=Communicator -> other should *select* Operative (1)
 									//         2=Operative    -> other should *select* Communicator (0)
-									sel = (chosen == Role::Communicator ? 1 : 0);
+									selected = (chosen == Role::Communicator ? 1 : 0);
+									printf("chosen: %d, other player forced to select %s\n", uint8_t(chosen), (selected == 0 ? "Communicator" : "Operative"));
 								};
 
 								// write role_1/role_2 from the chosen enum value:
+								uint8_t my_selected_role = (chosen == Role::Communicator ? 0 : 1);
 								if (cur_player_idx == 1)
+								{
 									game.role_1 = uint8_t(chosen);
+									game.selected_role_1 = my_selected_role;
+								}
 								else
+								{
 									game.role_2 = uint8_t(chosen);
+									game.selected_role_2 = my_selected_role;
+								}
 
 								// figure out the other side:
 								uint8_t &other_role = (cur_player_idx == 1 ? game.role_2 : game.role_1);
-								uint8_t &other_sel = (cur_player_idx == 1 ? game.selected_role_2 : game.selected_role_1);
+								uint8_t &other_selected = (cur_player_idx == 1 ? game.selected_role_2 : game.selected_role_1);
+								printf("\nother_role = %d, other_selected = %d, chosen = %d, other_role == uint8_t(chosen)? %d\n", other_role, other_selected, uint8_t(chosen), other_role == uint8_t(chosen));
 
 								if (other_role == 0)
 								{
@@ -145,7 +171,7 @@ int main(int argc, char **argv)
 								{
 									// same role: reset other to unknown, push their selection to the opposite:
 									other_role = 0;
-									set_selected_opposite(other_sel, chosen);
+									set_selected_opposite(other_selected, chosen);
 								}
 								else
 								{

@@ -375,6 +375,41 @@ bool Game::recv_state_message(Connection *connection_)
 	return true;
 }
 
+void Game::send_selected_role_message(Connection *connection_, uint8_t selected_0_or_1)
+{
+	assert(connection_);
+	auto &connection = *connection_;
+	connection.send(uint8_t(Message::C2S_SelectedRole));
+	connection.send(uint8_t(1)); // payload size = 1
+	connection.send(uint8_t(0));
+	connection.send(uint8_t(0));
+	connection.send(uint8_t(selected_0_or_1 ? 1 : 0));
+}
+
+bool Game::recv_selected_role_message(Connection *connection_, uint8_t *out_selected)
+{
+	assert(connection_);
+	auto &connection = *connection_;
+	auto &rb = connection.recv_buffer;
+
+	if (rb.size() < 4)
+		return false;
+	if (rb[0] != uint8_t(Message::C2S_SelectedRole))
+		return false;
+
+	uint32_t size = (uint32_t(rb[3]) << 16) | (uint32_t(rb[2]) << 8) | uint32_t(rb[1]);
+	if (size != 1)
+		throw std::runtime_error("SelectedRole message must have size 1");
+	if (rb.size() < 4 + size)
+		return false;
+
+	if (out_selected)
+		*out_selected = rb[4] ? 1 : 0;
+
+	rb.erase(rb.begin(), rb.begin() + 4 + size);
+	return true;
+}
+
 void Game::send_login_message(Connection *connection_, Role role)
 {
 	assert(connection_);

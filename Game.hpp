@@ -18,6 +18,7 @@ enum class Message : uint8_t {
 	//...
 	C2S_Login = 'L',
 	C2S_Instruction = 'I',
+	C2S_SelectedRole = 'R'
 };
 
 //used to represent a control input:
@@ -101,7 +102,11 @@ struct Game {
 	uint8_t selected_role_2 = 1;
 
 	// broadcast self_index in the snapshot so each client can tell if it’s P1 or P2.
-	uint8_t self_index = 0;
+	uint8_t self_index = 0; // 0 = initial, 1 = Player 1, 2 = Player 2
+
+	// update selected role
+	static void send_selected_role_message(Connection *c, uint8_t selected_0_or_1);
+	static bool recv_selected_role_message(Connection *c, uint8_t *out_selected);
 
 	static void send_login_message(Connection *c, Role role);
     static bool recv_login_message(Connection *c, Role *out_role);

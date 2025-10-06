@@ -183,7 +183,8 @@ PlayMode::~PlayMode()
 
 void PlayMode::send_login()
 {
-	Role selected_role = (start_selected == 0) ? Role::Communicator : Role::Operative;
+	uint8_t &my_selected_role = (game.self_index == 1) ? game.selected_role_1 : game.selected_role_2;
+	Role selected_role = (my_selected_role == 0) ? Role::Communicator : Role::Operative;
 	Game::send_login_message(&client.connection, selected_role);
 	// NOTE: data is actually pushed over the wire in client.poll() during update()
 	my_role = selected_role;
@@ -196,14 +197,19 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	{
 		if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat)
 		{
+			// Read the current server-pushed value and compute the toggle client-side:
+			uint8_t my_selected_role = (game.self_index == 1) ? game.selected_role_1 : game.selected_role_2;
+
 			if (evt.key.key == SDLK_W || evt.key.key == SDLK_UP)
 			{
-				start_selected = (start_selected + 1) % 2; // toggle
+				uint8_t new_selected = (my_selected_role ^ 1);
+				Game::send_selected_role_message(&client.connection, new_selected);
 				return true;
 			}
 			else if (evt.key.key == SDLK_S || evt.key.key == SDLK_DOWN)
 			{
-				start_selected = (start_selected + 1) % 2; // toggle
+				uint8_t new_selected = (my_selected_role ^ 1);
+				Game::send_selected_role_message(&client.connection, new_selected);
 				return true;
 			}
 			else if (evt.key.key == SDLK_RETURN || evt.key.key == SDLK_KP_ENTER)
@@ -307,15 +313,6 @@ void PlayMode::update(float elapsed)
 			}
 		} }, 0.0);
 
-	if (game.phase == Game::Phase::Lobby && (game.self_index == 1 || game.self_index == 2))
-	{
-		int server_selected = (game.self_index == 1) ? int(game.selected_role_1) : int(game.selected_role_2);
-		if (server_selected != last_selected_from_server)
-		{
-			start_selected = server_selected; // the other player's selection forces the current player's selection to change
-			last_selected_from_server = server_selected;
-		}
-	}
 	if (game.phase == Game::Phase::Communication) {
 		caret_time += elapsed;
 		ensure_text_input_state();
@@ -361,10 +358,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 
 		if (game.phase == Game::Phase::Lobby)
 		{
+			uint8_t &my_selected_role = (game.self_index == 1) ? game.selected_role_1 : game.selected_role_2;
 			draw_shaped_text("Enter your identity for further instruction:", {MARGIN_LEFT, MARGIN_TOP, 0}, 0.8f * X, 0.8f * Y, {255, 255, 255, 255}, clip);
-			// selection arrows use the current local 'start_selected' (possibly overridden by server)
-			std::string option_0 = (start_selected == 0 ? "> " : "  ") + std::string("Communicator") + (start_selected == 0 ? " <" : "");
-			std::string option_1 = (start_selected == 1 ? "> " : "  ") + std::string("Operative") + (start_selected == 1 ? " <" : "");
+			std::string option_0 = (my_selected_role == 0 ? "> " : "  ") + std::string("Communicator") + (my_selected_role == 0 ? " <" : "");
+			std::string option_1 = (my_selected_role == 1 ? "> " : "  ") + std::string("Operative") + (my_selected_role == 1 ? " <" : "");
 			draw_shaped_text(option_0, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 2 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
 			draw_shaped_text(option_1, {MARGIN_LEFT + 0.05f, MARGIN_TOP - 3 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
 
