@@ -16,8 +16,91 @@
 
 #include <random>
 #include <array>
+#include <unordered_map>
 
-// Global (file-scope) resources for the room scene:
+static std::unordered_map<std::string, std::pair<glm::vec3, glm::vec3>> g_bounds_by_transform_name;
+
+static bool screen_to_world_ray(
+	glm::uvec2 drawable_size,
+	glm::vec2 mouse_px,
+	Scene::Camera const &cam,
+	glm::mat4 const &cam_world_matrix,
+	glm::vec3 const &cam_world,
+	glm::vec3 *out_origin,
+	glm::vec3 *out_dir)
+{
+	if (!out_origin || !out_dir)
+		return false;
+
+	float nx = (2.0f * (mouse_px.x / float(drawable_size.x))) - 1.0f;
+	float ny = -(2.0f * (mouse_px.y / float(drawable_size.y))) + 1.0f;
+
+	glm::vec4 p_near(nx, ny, -1.0f, 1.0f);
+	glm::vec4 p_far(nx, ny, 1.0f, 1.0f);
+
+	glm::mat4 P = cam.make_projection();
+	glm::mat4 V = glm::inverse(cam_world_matrix);
+	glm::mat4 invVP = glm::inverse(P * V);
+
+	// glm::vec4 w_near = invVP * p_near;
+	// w_near /= w_near.w;
+	// glm::vec4 w_far = invVP * p_far;
+	// w_far /= w_far.w;
+
+	glm::vec4 w_far = invVP * p_far;
+	w_far /= w_far.w;
+	*out_origin = cam_world;
+	*out_dir = glm::normalize(glm::vec3(w_far) - cam_world);
+
+	glm::vec3 cam_yforward_world = glm::normalize(glm::vec3(cam_world_matrix * glm::vec4(0, 0, -1, 0)));
+	printf("out_dir(%.2f,%.2f,%.2f), cam_yforward_world(%.2f,%.2f,%.2f), dot=%.2f\n",
+		   out_dir->x, out_dir->y, out_dir->z,
+		   cam_yforward_world.x, cam_yforward_world.y, cam_yforward_world.z,
+		   glm::dot(*out_dir, cam_yforward_world));
+	if (glm::dot(*out_dir, cam_yforward_world) < 0.0f)
+	{
+		*out_dir = -*out_dir;
+	}
+	return true;
+}
+
+static bool ray_aabb_intersect(glm::vec3 ray_origin, glm::vec3 ray_dir, glm::vec3 bmin, glm::vec3 bmax, float *t_hit)
+{
+	float tmin = 0.0f, tmax = 1e30f;
+	const float eps = 1e-8f;
+	for (int i = 0; i < 3; ++i)
+	{
+		// float t0 = (bmin[i] - ray_origin[i]) / ray_dir[i];
+		// float t1 = (bmax[i] - ray_origin[i]) / ray_dir[i];
+		// if (ray_dir[i] < 0.0f)
+		// 	std::swap(t0, t1);
+
+		if (std::abs(ray_dir[i]) < eps)
+		{
+			// Ray parallel to this slab: must already be inside it
+			if (ray_origin[i] < bmin[i] || ray_origin[i] > bmax[i])
+				return false;
+			continue;
+		}
+		float invD = 1.0f / ray_dir[i];
+		float t0 = (bmin[i] - ray_origin[i]) * invD;
+		float t1 = (bmax[i] - ray_origin[i]) * invD;
+		if (invD < 0.0f)
+			std::swap(t0, t1);
+
+		tmin = std::max(t0, tmin);
+		tmax = std::min(t1, tmax);
+		if (tmax < tmin)
+		{
+			printf("i: %d, t0=%.2f, t1=%.2f, tmin=%.2f, tmax=%.2f\n", i, t0, t1, tmin, tmax);
+			return false;
+		}
+	}
+	if (t_hit)
+		*t_hit = tmin;
+	return true;
+}
+
 GLuint room_meshes_for_lit_color_texture_program = 0;
 
 Load<MeshBuffer> room_meshes(LoadTagDefault, []() -> MeshBuffer const *
@@ -28,16 +111,22 @@ Load<MeshBuffer> room_meshes(LoadTagDefault, []() -> MeshBuffer const *
     return ret; });
 
 Load<Scene> room_scene(LoadTagDefault, []() -> Scene const *
-					   { return new Scene(data_path("room.scene"), [&](Scene &scene, Scene::Transform *xf, std::string const &mesh_name)
+					   { return new Scene(data_path("room.scene"), [&](Scene &scene, Scene::Transform *transform, std::string const &mesh_name)
 										  {
         Mesh const &mesh = room_meshes->lookup(mesh_name);
-        scene.drawables.emplace_back(xf);
+        scene.drawables.emplace_back(transform);
         Scene::Drawable &dr = scene.drawables.back();
         dr.pipeline = lit_color_texture_program_pipeline;
         dr.pipeline.vao   = room_meshes_for_lit_color_texture_program;
         dr.pipeline.type  = mesh.type;
         dr.pipeline.start = mesh.start;
-        dr.pipeline.count = mesh.count; }); });
+        dr.pipeline.count = mesh.count;
+
+	 g_bounds_by_transform_name[transform->name] = { mesh.min, mesh.max };
+	 printf("g_bounds_by_transform_name[%s] = (%.2f,%.2f,%.2f) to (%.2f,%.2f,%.2f)\n",
+		 transform->name.c_str(),
+		 mesh.min.x, mesh.min.y, mesh.min.z,
+		 mesh.max.x, mesh.max.y, mesh.max.z); }); });
 
 static void utf8_pop_back(std::string &s)
 {
@@ -50,7 +139,7 @@ static void utf8_pop_back(std::string &s)
 	s.erase(i);
 }
 
-PlayMode::PlayMode(Client &client_, SDL_Window* window_) : client(client_), scene(*room_scene)
+PlayMode::PlayMode(Client &client_, SDL_Window *window_) : client(client_), scene(*room_scene)
 {
 	sdl_window = window_;
 	if (scene.cameras.size() != 1)
@@ -58,6 +147,15 @@ PlayMode::PlayMode(Client &client_, SDL_Window* window_) : client(client_), scen
 		throw std::runtime_error("Expecting 1 camera in room.scene, found " + std::to_string(scene.cameras.size()));
 	}
 	camera = &scene.cameras.front();
+
+	for (auto &transform : scene.transforms)
+	{
+		if (transform.name == "Adult.001")
+		{ // exact Blender object name
+			adult_001 = &transform;
+			break;
+		}
+	}
 
 	// Credit: used ChatGPT to help me understand and set up text rendering
 	// --- Font ---
@@ -112,67 +210,69 @@ void main(){
 
 // Credit: used ChatGPT to help me understand the opengl functions and calculate the corret position to render text
 void PlayMode::draw_shaped_text(
-    const std::string &s,
-    glm::vec3 const &anchor_in,
-    glm::vec3 const &x, glm::vec3 const &y,
-    glm::u8vec4 const &color,
-    glm::mat4 const &world_to_clip)
+	const std::string &s,
+	glm::vec3 const &anchor_in,
+	glm::vec3 const &x, glm::vec3 const &y,
+	glm::u8vec4 const &color,
+	glm::mat4 const &world_to_clip)
 {
-    if (!hb || !ft || s.empty()) return;
+	if (!hb || !ft || s.empty())
+		return;
 
-    auto run = hb->shape(s); // HB shaping result :contentReference[oaicite:11]{index=11}
-    if (run.infos.empty()) return;
+	auto run = hb->shape(s); // HB shaping result :contentReference[oaicite:11]{index=11}
+	if (run.infos.empty())
+		return;
 
-    float font_px = float(ft->pixel_size());
-    glm::vec3 per_px_x = x / font_px;
-    glm::vec3 per_px_y = y / font_px;
+	float font_px = float(ft->pixel_size());
+	glm::vec3 per_px_x = x / font_px;
+	glm::vec3 per_px_y = y / font_px;
 
-    glUseProgram(text_prog);
-    glUniform3f(text_uColor, color.r/255.f, color.g/255.f, color.b/255.f);
-    glUniformMatrix4fv(text_uClip, 1, GL_FALSE, glm::value_ptr(world_to_clip));
-    glActiveTexture(GL_TEXTURE0);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glUseProgram(text_prog);
+	glUniform3f(text_uColor, color.r / 255.f, color.g / 255.f, color.b / 255.f);
+	glUniformMatrix4fv(text_uClip, 1, GL_FALSE, glm::value_ptr(world_to_clip));
+	glActiveTexture(GL_TEXTURE0);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glm::vec3 pen = anchor_in;
-    glBindVertexArray(text_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, text_vbo);
+	glm::vec3 pen = anchor_in;
+	glBindVertexArray(text_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, text_vbo);
 
-    for (size_t i=0;i<run.infos.size();++i){
-        FT_UInt gi = run.infos[i].codepoint;
-        auto const &pos = run.poss[i];
-        float x_off = float(pos.x_offset)/64.f, y_off = float(pos.y_offset)/64.f;
-        float x_adv = float(pos.x_advance)/64.f, y_adv = float(pos.y_advance)/64.f;
+	for (size_t i = 0; i < run.infos.size(); ++i)
+	{
+		FT_UInt gi = run.infos[i].codepoint;
+		auto const &pos = run.poss[i];
+		float x_off = float(pos.x_offset) / 64.f, y_off = float(pos.y_offset) / 64.f;
+		float x_adv = float(pos.x_advance) / 64.f, y_adv = float(pos.y_advance) / 64.f;
 
-        auto const &g = ft->get_glyph(gi); // FT-rendered bitmap + GL_R8 tex :contentReference[oaicite:12]{index=12}
+		auto const &g = ft->get_glyph(gi); // FT-rendered bitmap + GL_R8 tex :contentReference[oaicite:12]{index=12}
 
-        glm::vec3 base = pen + per_px_x * (x_off + g.bearing.x) + per_px_y * (y_off - g.bearing.y);
+		glm::vec3 base = pen + per_px_x * (x_off + g.bearing.x) + per_px_y * (y_off - g.bearing.y);
 
-        glm::vec3 p00 = base;
-        glm::vec3 p10 = base + per_px_x * float(g.size.x);
-        glm::vec3 p11 = p10 + per_px_y * float(g.size.y);
-        glm::vec3 p01 = base + per_px_y * float(g.size.y);
+		glm::vec3 p00 = base;
+		glm::vec3 p10 = base + per_px_x * float(g.size.x);
+		glm::vec3 p11 = p10 + per_px_y * float(g.size.y);
+		glm::vec3 p01 = base + per_px_y * float(g.size.y);
 
-        float verts[6*4] = {
-            p00.x,p00.y, 0.f,1.f,
-            p10.x,p10.y, 1.f,1.f,
-            p11.x,p11.y, 1.f,0.f,
-            p00.x,p00.y, 0.f,1.f,
-            p11.x,p11.y, 1.f,0.f,
-            p01.x,p01.y, 0.f,0.f
-        };
+		float verts[6 * 4] = {
+			p00.x, p00.y, 0.f, 1.f,
+			p10.x, p10.y, 1.f, 1.f,
+			p11.x, p11.y, 1.f, 0.f,
+			p00.x, p00.y, 0.f, 1.f,
+			p11.x, p11.y, 1.f, 0.f,
+			p01.x, p01.y, 0.f, 0.f};
 
-        glBindTexture(GL_TEXTURE_2D, g.tex);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindTexture(GL_TEXTURE_2D, g.tex);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        pen += per_px_x * (x_adv /* + optional tracking */) + per_px_y * y_adv;
-    }
+		pen += per_px_x * (x_adv /* + optional tracking */) + per_px_y * y_adv;
+	}
 
-    glDisable(GL_BLEND);
-    glUseProgram(0);
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glDisable(GL_BLEND);
+	glUseProgram(0);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 PlayMode::~PlayMode()
@@ -259,24 +359,113 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		// swallow other keys here if you don't want gameplay to trigger
 	}
 
+	if (game.phase == Game::Phase::Operation && my_role == Role::Operative)
+	{
+		// printf("- operative mouse event\n");
+		if (evt.type == SDL_EVENT_MOUSE_BUTTON_DOWN)
+		{
+			// printf("-- operative mouse button down\n");
+			if (!adult_001)
+			{
+				printf("no adult_001\n");
+				return true;
+			}
+
+			// 1) world ray
+			glm::vec3 ray_origin, ray_dir;
+			glm::vec2 mouse_px = glm::vec2(float(evt.button.x), float(evt.button.y));
+			glm::mat4 cam_world_matrix = camera->transform->make_world_from_local();
+			printf("cam_world_matrix = [[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f]]\n",
+				   cam_world_matrix[0][0], cam_world_matrix[0][1], cam_world_matrix[0][2], cam_world_matrix[0][3],
+				   cam_world_matrix[1][0], cam_world_matrix[1][1], cam_world_matrix[1][2], cam_world_matrix[1][3],
+				   cam_world_matrix[2][0], cam_world_matrix[2][1], cam_world_matrix[2][2], cam_world_matrix[2][3],
+				   cam_world_matrix[3][0], cam_world_matrix[3][1], cam_world_matrix[3][2], cam_world_matrix[3][3]);
+
+			glm::vec3 cam_world = glm::vec3(cam_world_matrix * glm::vec4(0, 0, 0, 1));
+			printf("cam_world(%.2f,%.2f,%.2f)\n", cam_world.x, cam_world.y, cam_world.z)
+			;
+
+			if (!screen_to_world_ray(window_size, mouse_px, *camera, cam_world_matrix, cam_world, &ray_origin, &ray_dir))
+			{
+				printf("no ray\n");
+				return true;
+			}
+			printf("ray_origin=(%.2f,%.2f,%.2f) ray_dir=(%.2f,%.2f,%.2f)\n",
+				   ray_origin.x, ray_origin.y, ray_origin.z,
+				   ray_dir.x, ray_dir.y, ray_dir.z);
+
+			// 2) bring ray into object(local) space
+			glm::vec3 adult_world = glm::vec3(adult_001->make_world_from_local() * glm::vec4(0, 0, 0, 1)); // DEBUG
+			printf("adult_world(%.2f,%.2f,%.2f)\n", adult_world.x, adult_world.y, adult_world.z);
+
+			glm::mat4 adult_local_matrix = adult_001->make_local_from_world();
+			glm::vec3 adult_local = glm::vec3(adult_local_matrix * glm::vec4(0, 0, 0, 1));
+
+			printf("adult_local_matrix = [[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f],[%.2f,%.2f,%.2f,%.2f]]\n",
+				   adult_local_matrix[0][0], adult_local_matrix[0][1], adult_local_matrix[0][2], adult_local_matrix[0][3],
+				   adult_local_matrix[1][0], adult_local_matrix[1][1], adult_local_matrix[1][2], adult_local_matrix[1][3],
+				   adult_local_matrix[2][0], adult_local_matrix[2][1], adult_local_matrix[2][2], adult_local_matrix[2][3],
+				   adult_local_matrix[3][0], adult_local_matrix[3][1], adult_local_matrix[3][2], adult_local_matrix[3][3]);	
+				   
+			printf("adult_local(%.2f,%.2f,%.2f)\n",
+				   adult_local.x, adult_local.y, adult_local.z);
+
+			glm::vec3 ray_origin_local = glm::vec3(adult_local_matrix * glm::vec4(ray_origin, 1.0f));
+			glm::vec3 ray_dir_local = glm::normalize(glm::mat3(adult_local_matrix) * ray_dir);
+			printf("ray_origin_local(%.2f,%.2f,%.2f), ray_dir_local(%.2f,%.2f,%.2f)\n",
+				   ray_origin_local.x, ray_origin_local.y, ray_origin_local.z,
+				   ray_dir_local.x, ray_dir_local.y, ray_dir_local.z);
+
+			// 3) local-space AABB
+			auto it = g_bounds_by_transform_name.find(adult_001->name);
+			if (it == g_bounds_by_transform_name.end())
+			{
+				printf("no bound. g_bounds_by_transform_name: ");
+				for (const auto &it : g_bounds_by_transform_name)
+					printf("  %s, ", it.first.c_str());
+				printf("\n");
+				return true;
+			}
+			glm::vec3 bmin = it->second.first;
+			glm::vec3 bmax = it->second.second;
+			printf("bound of adult_001 bmin=(%.2f,%.2f,%.2f) bmax=(%.2f,%.2f,%.2f)\n",
+				   bmin.x, bmin.y, bmin.z,
+				   bmax.x, bmax.y, bmax.z);
+
+			
+
+			// 4) intersect
+			float t;
+			if (ray_aabb_intersect(ray_origin_local, ray_dir_local, bmin, bmax, &t))
+			{
+				printf("hit %s t=%f\n", adult_001->name.c_str(), t);
+			}
+			else
+			{
+				printf("miss %s\n", adult_001->name.c_str());
+			}
+			return true;
+		}
+	}
+
 	return false;
 }
 
 void PlayMode::ensure_text_input_state()
+{
+	if (my_role == Role::Communicator && !text_input_active)
 	{
-		if (my_role == Role::Communicator && !text_input_active)
-		{
-			if (sdl_window)
-				SDL_StartTextInput(sdl_window);
-			text_input_active = true;
-		}
-		else if (my_role != Role::Communicator && text_input_active)
-		{
-			if (sdl_window)
-				SDL_StopTextInput(sdl_window);
-			text_input_active = false;
-		}
+		if (sdl_window)
+			SDL_StartTextInput(sdl_window);
+		text_input_active = true;
 	}
+	else if (my_role != Role::Communicator && text_input_active)
+	{
+		if (sdl_window)
+			SDL_StopTextInput(sdl_window);
+		text_input_active = false;
+	}
+}
 
 void PlayMode::update(float elapsed)
 {
@@ -313,7 +502,8 @@ void PlayMode::update(float elapsed)
 			}
 		} }, 0.0);
 
-	if (game.phase == Game::Phase::Communication) {
+	if (game.phase == Game::Phase::Communication)
+	{
 		caret_time += elapsed;
 		ensure_text_input_state();
 	}
@@ -372,7 +562,7 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			draw_shaped_text("Enter your identity for further instruction:", {MARGIN_LEFT, MARGIN_TOP - LINE_SPACING * 4, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
 
 			float INTRO_TOP = MARGIN_TOP - LINE_SPACING * 6;
-			
+
 			std::string option_0 = (my_selected_role == 0 ? "> " : "  ") + std::string("Communicator") + (my_selected_role == 0 ? " <" : "");
 			std::string option_1 = (my_selected_role == 1 ? "> " : "  ") + std::string("Operative") + (my_selected_role == 1 ? " <" : "");
 			draw_shaped_text(option_0, {MARGIN_LEFT + 0.05f, INTRO_TOP - 2 * LINE_SPACING, 0}, X, Y, {255, 255, 0, 255}, clip);
@@ -426,18 +616,18 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 
 			if (my_role == Role::Communicator)
 			{
-				float MARGIN_TOP = +1.0f;
+				float MARGIN_TOP = +0.95f;
 				float FONT_H = 0.06f;
 				float LINE_SPACING = FONT_H * 1.4f;
 				float MARGIN_LEFT = -1.75f;
 
-				draw_shaped_text("The target objects have been marked in red. For security reasons, your teammate will not receive this information.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
-				draw_shaped_text("Only you hold the clue.", {MARGIN_LEFT, MARGIN_TOP - 5 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
-				draw_shaped_text("You must send instructions to your teammate within a strict character limit,", {MARGIN_LEFT, MARGIN_TOP - 6 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
-				draw_shaped_text("ensuring your teammate can identify the targets.", {MARGIN_LEFT, MARGIN_TOP - 7 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
-				draw_shaped_text("Warning: Half the message will be lost in transmission.", {MARGIN_LEFT, MARGIN_TOP - 8 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, HIGHLIGHT_COLOR, clip);
+				draw_shaped_text("The target objects have been marked in red. For security reasons, your teammate will not receive this information.", {MARGIN_LEFT, MARGIN_TOP, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
+				draw_shaped_text("Only you hold the clue.", {MARGIN_LEFT, MARGIN_TOP - 1 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
+				draw_shaped_text("You must send instructions to your teammate within a strict character limit,", {MARGIN_LEFT, MARGIN_TOP - 2 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
+				draw_shaped_text("ensuring your teammate can identify the targets.", {MARGIN_LEFT, MARGIN_TOP - 3 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
+				draw_shaped_text("Warning: Half the message will be lost in transmission.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, HIGHLIGHT_COLOR, clip);
 
-				float INPUT_TOP = MARGIN_TOP - 10.0f * LINE_SPACING; // a bit under your instructions
+				float INPUT_TOP = MARGIN_TOP - 6.0f * LINE_SPACING; // a bit under your instructions
 				draw_shaped_text("MESSAGE (max 150):", {MARGIN_LEFT, INPUT_TOP, 0}, X, Y, DEFAULT_COLOR, clip);
 
 				// caret blink at 1Hz:
@@ -449,11 +639,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			}
 			else if (my_role == Role::Operative)
 			{
-				float MARGIN_TOP = +1.0f;
+				float MARGIN_TOP = +1.25f;
 				float FONT_H = 0.06f;
 				float LINE_SPACING = FONT_H * 1.4f;
 				float MARGIN_LEFT = -1.75f;
-				
+
 				draw_shaped_text("The communicator will soon send you instructions containing details of the target objects.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
 				draw_shaped_text("Due to technical constraints, roughly half of the message will be lost in transit.", {MARGIN_LEFT, MARGIN_TOP - 5 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
 				draw_shaped_text("You will receive a corrupted instruction, decode its contents, and locate the targets at the restaurant.", {MARGIN_LEFT, MARGIN_TOP - 6 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
@@ -485,9 +675,12 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			glDisable(GL_DEPTH_TEST);
 
 			std::string label;
-			if (my_role == Role::Communicator) {
+			if (my_role == Role::Communicator)
+			{
 				label = "Your teammate receives:";
-			} else {
+			}
+			else
+			{
 				label = "Instruction reiceived:";
 			}
 			draw_shaped_text(label, {MARGIN_LEFT, MARGIN_TOP, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);

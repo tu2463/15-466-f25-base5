@@ -38,8 +38,10 @@ struct PlayMode : Mode
 
 	Role my_role = Role::Unknown;
 
+	// --- Scene ---
 	Scene scene; // a local copy (constructed from the loaded scene)
 	Scene::Camera *camera = nullptr;
+	Scene::Transform *adult_001 = nullptr;
 
 	// --- Lobby phase ---
 	// UI state is driven by server phase, but we keep local selection to send as login:

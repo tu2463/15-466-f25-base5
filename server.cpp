@@ -160,7 +160,7 @@ int main(int argc, char **argv)
 								// figure out the other side:
 								uint8_t &other_role = (cur_player_idx == 1 ? game.role_2 : game.role_1);
 								uint8_t &other_selected = (cur_player_idx == 1 ? game.selected_role_2 : game.selected_role_1);
-								printf("\nother_role = %d, other_selected = %d, chosen = %d, other_role == uint8_t(chosen)? %d\n", other_role, other_selected, uint8_t(chosen), other_role == uint8_t(chosen));
+								// printf("\nother_role = %d, other_selected = %d, chosen = %d, other_role == uint8_t(chosen)? %d\n", other_role, other_selected, uint8_t(chosen), other_role == uint8_t(chosen));
 
 								if (other_role == 0)
 								{
