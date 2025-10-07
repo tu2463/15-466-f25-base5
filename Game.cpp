@@ -375,6 +375,7 @@ bool Game::recv_state_message(Connection *connection_)
 	return true;
 }
 
+// Credit: the new functions below were helped by ChatGPT
 void Game::send_selected_role_message(Connection *connection_, uint8_t selected_0_or_1)
 {
 	assert(connection_);

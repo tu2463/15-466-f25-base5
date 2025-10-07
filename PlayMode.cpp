@@ -18,6 +18,7 @@
 #include <array>
 #include <unordered_map>
 
+// Credit: used ChatGPT to helpe me handle ray casting and object selection
 static std::unordered_map<std::string, std::pair<glm::vec3, glm::vec3>> g_bounds_by_transform_name;
 
 static bool screen_to_world_ray(
@@ -42,11 +43,6 @@ static bool screen_to_world_ray(
 	glm::mat4 V = glm::inverse(cam_world_matrix);
 	glm::mat4 invVP = glm::inverse(P * V);
 
-	// glm::vec4 w_near = invVP * p_near;
-	// w_near /= w_near.w;
-	// glm::vec4 w_far = invVP * p_far;
-	// w_far /= w_far.w;
-
 	glm::vec4 w_far = invVP * p_far;
 	w_far /= w_far.w;
 	*out_origin = cam_world;
@@ -70,11 +66,6 @@ static bool ray_aabb_intersect(glm::vec3 ray_origin, glm::vec3 ray_dir, glm::vec
 	const float eps = 1e-8f;
 	for (int i = 0; i < 3; ++i)
 	{
-		// float t0 = (bmin[i] - ray_origin[i]) / ray_dir[i];
-		// float t1 = (bmax[i] - ray_origin[i]) / ray_dir[i];
-		// if (ray_dir[i] < 0.0f)
-		// 	std::swap(t0, t1);
-
 		if (std::abs(ray_dir[i]) < eps)
 		{
 			// Ray parallel to this slab: must already be inside it
@@ -151,13 +142,13 @@ PlayMode::PlayMode(Client &client_, SDL_Window *window_) : client(client_), scen
 	for (auto &transform : scene.transforms)
 	{
 		if (transform.name == "Adult.001")
-		{ // exact Blender object name
+		{
 			adult_001 = &transform;
 			break;
 		}
 	}
 
-	// Credit: used ChatGPT to help me understand and set up text rendering
+	// Credit: font related code are largely copied from last game
 	// --- Font ---
 	// 1) load font (CourierPrime-Bold.ttf) and create HB shaper:
 	ft = std::make_unique<FontFT>(data_path("CourierPrime-Bold.ttf"), 48); // fixed px size
@@ -208,7 +199,6 @@ void main(){
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-// Credit: used ChatGPT to help me understand the opengl functions and calculate the corret position to render text
 void PlayMode::draw_shaped_text(
 	const std::string &s,
 	glm::vec3 const &anchor_in,
@@ -219,7 +209,7 @@ void PlayMode::draw_shaped_text(
 	if (!hb || !ft || s.empty())
 		return;
 
-	auto run = hb->shape(s); // HB shaping result :contentReference[oaicite:11]{index=11}
+	auto run = hb->shape(s);
 	if (run.infos.empty())
 		return;
 
@@ -286,7 +276,6 @@ void PlayMode::send_login()
 	uint8_t &my_selected_role = (game.self_index == 1) ? game.selected_role_1 : game.selected_role_2;
 	Role selected_role = (my_selected_role == 0) ? Role::Communicator : Role::Operative;
 	Game::send_login_message(&client.connection, selected_role);
-	// NOTE: data is actually pushed over the wire in client.poll() during update()
 	my_role = selected_role;
 }
 
@@ -297,7 +286,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	{
 		if (evt.type == SDL_EVENT_KEY_DOWN && !evt.key.repeat)
 		{
-			// Read the current server-pushed value and compute the toggle client-side:
+			// Read the current server value and compute the toggle on client
 			uint8_t my_selected_role = (game.self_index == 1) ? game.selected_role_1 : game.selected_role_2;
 
 			if (evt.key.key == SDLK_W || evt.key.key == SDLK_UP)
@@ -321,6 +310,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		return false;
 	}
 
+	// Credit: used ChatGPT for assistance on text input handling
 	if (game.phase == Game::Phase::Communication && my_role == Role::Communicator)
 	{
 		// accept text input events (IME-friendly):
@@ -382,8 +372,7 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				   cam_world_matrix[3][0], cam_world_matrix[3][1], cam_world_matrix[3][2], cam_world_matrix[3][3]);
 
 			glm::vec3 cam_world = glm::vec3(cam_world_matrix * glm::vec4(0, 0, 0, 1));
-			printf("cam_world(%.2f,%.2f,%.2f)\n", cam_world.x, cam_world.y, cam_world.z)
-			;
+			printf("cam_world(%.2f,%.2f,%.2f)\n", cam_world.x, cam_world.y, cam_world.z);
 
 			if (!screen_to_world_ray(window_size, mouse_px, *camera, cam_world_matrix, cam_world, &ray_origin, &ray_dir))
 			{
@@ -405,8 +394,8 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 				   adult_local_matrix[0][0], adult_local_matrix[0][1], adult_local_matrix[0][2], adult_local_matrix[0][3],
 				   adult_local_matrix[1][0], adult_local_matrix[1][1], adult_local_matrix[1][2], adult_local_matrix[1][3],
 				   adult_local_matrix[2][0], adult_local_matrix[2][1], adult_local_matrix[2][2], adult_local_matrix[2][3],
-				   adult_local_matrix[3][0], adult_local_matrix[3][1], adult_local_matrix[3][2], adult_local_matrix[3][3]);	
-				   
+				   adult_local_matrix[3][0], adult_local_matrix[3][1], adult_local_matrix[3][2], adult_local_matrix[3][3]);
+
 			printf("adult_local(%.2f,%.2f,%.2f)\n",
 				   adult_local.x, adult_local.y, adult_local.z);
 
@@ -431,8 +420,6 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			printf("bound of adult_001 bmin=(%.2f,%.2f,%.2f) bmax=(%.2f,%.2f,%.2f)\n",
 				   bmin.x, bmin.y, bmin.z,
 				   bmax.x, bmax.y, bmax.z);
-
-			
 
 			// 4) intersect
 			float t;
@@ -586,10 +573,8 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 
 		if (game.phase == Game::Phase::Communication)
 		{
-			// 3D scene pass:
 			camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 
-			// simple directional light (same as your previous PlayMode)
 			glUseProgram(lit_color_texture_program->program);
 			glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
 			glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f, -1.0f)));
@@ -627,10 +612,10 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 				draw_shaped_text("ensuring your teammate can identify the targets.", {MARGIN_LEFT, MARGIN_TOP - 3 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, DEFAULT_COLOR, clip);
 				draw_shaped_text("Warning: Half the message will be lost in transmission.", {MARGIN_LEFT, MARGIN_TOP - 4 * LINE_SPACING, 0}, DESCRIPTION_X, DESCRIPTION_Y, HIGHLIGHT_COLOR, clip);
 
-				float INPUT_TOP = MARGIN_TOP - 6.0f * LINE_SPACING; // a bit under your instructions
+				float INPUT_TOP = MARGIN_TOP - 6.0f * LINE_SPACING;
 				draw_shaped_text("MESSAGE (max 150):", {MARGIN_LEFT, INPUT_TOP, 0}, X, Y, DEFAULT_COLOR, clip);
 
-				// caret blink at 1Hz:
+				// caret blink at 1Hz: // Credt: helped by ChatGPT
 				bool caret_on = (std::fmod(caret_time, 1.0f) < 0.5f);
 				std::string view = input_text + (caret_on ? "|" : " ");
 
@@ -656,7 +641,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 
 		if (game.phase == Game::Phase::Operation)
 		{
-			// 3D scene:
 			camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 
 			glUseProgram(lit_color_texture_program->program);
@@ -697,11 +681,6 @@ void PlayMode::draw(glm::uvec2 const &drawable_size)
 			GL_ERRORS();
 			return;
 		}
-
-		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		// lines.draw(glm::vec3(Game::ArenaMin.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMin.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
-		// lines.draw(glm::vec3(Game::ArenaMax.x, Game::ArenaMin.y, 0.0f), glm::vec3(Game::ArenaMax.x, Game::ArenaMax.y, 0.0f), glm::u8vec4(0xff, 0x00, 0xff, 0xff));
 		return;
 	}
 	GL_ERRORS();

@@ -44,18 +44,12 @@ struct PlayMode : Mode
 	Scene::Transform *adult_001 = nullptr;
 
 	// --- Lobby phase ---
-	// UI state is driven by server phase, but we keep local selection to send as login:
-	// int last_selected_from_server = -1; // -1 = none applied yet
-	// int local_selected = 0; // 0 = Communicator, 1 = Operative
-	bool start_pressed_login = false;
-
 	void send_login();
 
-	// --- Font ---
+	// --- Font --- // Credit: font related code are largely copied from last game
 	std::unique_ptr<FontFT> ft;
 	std::unique_ptr<TextHB> hb;
 
-	// text GL state:
 	GLuint text_prog = 0;
 	GLint text_uColor = -1, text_uTex = -1, text_uClip = -1;
 	GLuint text_vao = 0, text_vbo = 0;
@@ -67,7 +61,7 @@ struct PlayMode : Mode
 		glm::u8vec4 const &color,
 		glm::mat4 const &world_to_clip);
 
-	// --- Text input ---
+	// --- Text input --- // Credit: ChatGPT helped me
 	SDL_Window *sdl_window = nullptr;
 	bool text_input_active = false;
 	std::string input_text; // what user typed (UTF-8)

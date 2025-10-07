@@ -128,6 +128,7 @@ int main(int argc, char **argv)
 								// Conflict resolution stays in the login (Enter) path.
 							}
 
+							// Credit: helped by ChatGPT
 							if (Game::recv_login_message(c, &chosen))
 							{
 								handled_message = true;
