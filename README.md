@@ -14,37 +14,54 @@ This is a two-player game. Players are secret agents investigating a restaurant 
 
 > How is the client/server multiplayer in this game? What messages are transmitted? Where in the code?
 
-1. Role selection
+1. Role Selection
 
-Only one player can be the communicator, and the other will be the operative. In the start scene, players will use their up/down keys to select the role, and hit Enter to get ready. If the player selects a role that the other player has selected, they will force the other player to the other role. Specifically:
+Only one player can be the Communicator, and the other must be the Operative.
 
-- When Player 1 (P1) use the keys to switch selection, the currently selected role (`selected_role_1`) will be stored in a variable sent to server via `send_selected_role_message` in Game.hpp/cpp.
+In the start (Lobby) scene, each player uses the Up/Down keys to select a role and presses Enter to confirm they are ready.
 
-- When P1 selects Communicator and hits **Enter**, the P1 client sends its chosen enum (`Role::Communicator`) via `send_login_message`  Game.hpp/cpp.
+Specific logic:
 
-- The **server** sets a variable `role_1` to P1's chosen role. If P2 has already selected the communicator and is ready, P2 will be forced to select the operative role. `selected_role_2` will be set to the operative role, and P2's ready state will be canceled.
+- When Player 1 (P1) switches their role selection, the current choice (selected_role_1) is sent to the server using
+send_selected_role_message defined in Game.hpp/cpp.
 
-- Players will stay in the start scene unless both roles are complementary, in which case they will proceed to the next scene `phase = Communication`.
+- When P1 confirms a role (e.g., selects Communicator and presses Enter), the client sends the chosen role enum (Role::Communicator) to the server using send_login_message in Game.hpp/cpp.
 
-- Every snapshot in **Lobby** carries `role_1/role_2` and `selected_role_1/selected_role_2`. If the current player is ready while the other is not, The “Log In” label turns to “Waiting for your teammate…”.
+- On the server, role_1 is updated to P1’s confirmed role.
+
+- If Player 2 (P2) has already selected the same role (e.g., Communicator) and is ready, the server forces P2 to switch to the complementary role (Operative).
+
+In this case: selected_role_2 is set to Operative, and P2’s ready state (role_2) is reset to Unknown.
+
+- Players remain in the Lobby until both are ready with complementary roles (Communicator ↔ Operative).
+
+- When that condition is met, the server proceeds the game to the Communication phase.
+
+- Each Lobby snapshot from the server includes role_1, role_2, selected_role_1, and selected_role_2.
+
+- On the client side, if the local player is ready but the other is not, the “Log In” button label changes to
+“Waiting for your teammate…”.
+
 
 2. Instruction message
 
-When in Communication phase and Communicator role, if player types Enter and input_text.size() > 0, then:
+- During the Communication phase, the Communicator can send instructions.
 
-- send the instruction text to server via `send_instruction_message` in Game.hpp/cpp.
+- When the Communicator finishes typing and presses Enter: 
 
-- Change the phase from Communication to Operation
+    - The instruction text is sent to the server using send_instruction_message in Game.hpp/cpp.
 
-- for both players (Communicator and Operator), in Operation phase, the text typed by Communicator in the Communication phase will be displayed on the screen.
+    - The game phase changes from Communication to Operation.
 
-- After go from Communication to Operation phase, **randomly replaces 50% of non-space, characters** with `"*"` to simulate corrupted communication. Store that as `corrupted_instruction`
+- The server then:
 
-- In Operation phase, show the corrupted instruction instead of the original instruction.
+    - Stores the original instruction in instruction_text.
 
-    - on communicator’s screen, show: “Instruction Received”, then the corrupted instruction
+    - Creates a corrupted copy (corrupted_instruction) by replacing 50% of non-space characters with "*" to simulate damaged communication.
 
-    - on operative screen, just show: “Instruction”, then the corrupted instruction
+    - Sends the new game state to both clients.
+
+- In the Operation phase, both clients display the corrupted instruction instead of the original message.
 
 ## Screen Shot:
 
